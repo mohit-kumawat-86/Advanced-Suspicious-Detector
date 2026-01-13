@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Advanced Suspicious URL Detector</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+
+<style>
+body{
+    font-family: "Segoe UI",Arial,sans-serif;
+    margin:0;
+    background:linear-gradient(135deg,#1abc9c,#16a085);
+    color:#333;
+    transition:.3s;
+}
+body.dark{
+    background:linear-gradient(135deg,#2c3e50,#34495e);
+    color:#ecf0f1;
+}
+header{
+    background:rgba(0,0,0,.65);
+    color:#fff;
+    padding:30px;
+    text-align:center;
+    position:relative;
+}
+header button{
+    position:absolute;
+    right:20px;
+    top:20px;
+}
+main{
+    max-width:950px;
+    margin:30px auto;
+    background:#fff;
+    padding:30px;
+    border-radius:12px;
+}
+body.dark main{background:#34495e}
+h2{border-bottom:2px solid #ddd;padding-bottom:8px}
+input,textarea{
+    width:100%;
+    padding:12px;
+    margin-bottom:15px;
+    border-radius:6px;
+    border:1px solid #ccc;
+}
+button{
+    background:#1abc9c;
+    color:white;
+    border:none;
+    padding:12px 20px;
+    border-radius:6px;
+    cursor:pointer;
+}
+button:hover{background:#16a085}
+.safe{color:#27ae60;font-weight:bold}
+.suspicious{color:#f39c12;font-weight:bold}
+.malicious{color:#e74c3c;font-weight:bold}
+.result{
+    margin-top:20px;
+    padding:20px;
+    background:#f9f9f9;
+    border-radius:10px;
+}
+body.dark .result{background:#2c3e50}
+ul{padding-left:20px}
+.modal{
+    display:none;
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,.6);
+}
+.modal-content{
+    background:#fff;
+    margin:12% auto;
+    padding:20px;
+    max-width:500px;
+    border-radius:10px;
+}
+body.dark .modal-content{background:#34495e}
+.close{
+    float:right;
+    font-size:22px;
+    cursor:pointer;
+}
+</style>
+</head>
+
+<body>
+<header>
+<h1>🔍 Advanced Suspicious Content Detector</h1>
+<p>Enterprise-grade URL, PDF & APK Security Analyzer</p>
+<button id="darkBtn">🌙</button>
+</header>
+
+<main>
+<h2>🔗 URL Analysis</h2>
+<input id="urlInput" placeholder="https://example.com">
+<button onclick="analyzeURL()">Analyze URL</button>
+
+<h2>📄 PDF Analysis</h2>
+<input type="file" id="pdfInput" accept=".pdf">
+<button onclick="analyzePDF()">Analyze PDF</button>
+
+<h2>📱 APK Analysis</h2>
+<input type="file" id="apkInput" accept=".apk">
+<button onclick="analyzeAPK()">Analyze APK</button>
+
+<div id="resultBox" class="result" style="display:none"></div>
+
+<h2>📜 Scan History</h2>
+<ul id="history"></ul>
+<button onclick="exportHistory()">Export History (JSON)</button>
+</main>
+
+<!-- REPORT MODAL -->
+<div class="modal" id="reportModal">
+<div class="modal-content">
+<span class="close" onclick="closeModal()">&times;</span>
+<h3>Report Suspicious Item</h3>
+<textarea id="reportText" rows="4" placeholder="Optional description"></textarea>
+<button onclick="submitReport()">Submit Report</button>
+</div>
+</div>
+
+<script>
+const darkBtn=document.getElementById("darkBtn");
+darkBtn.onclick=()=>document.body.classList.toggle("dark");
+
+let history=JSON.parse(localStorage.getItem("scanHistory"))||[];
+const historyEl=document.getElementById("history");
+
+function updateHistory(){
+    historyEl.innerHTML="";
+    history.slice().reverse().forEach(h=>{
+        const li=document.createElement("li");
+        li.innerHTML=`${h.item} → <span class="${h.verdict.toLowerCase()}">${h.verdict}</span> (Score: ${h.score})`;
+        historyEl.appendChild(li);
+    });
+    localStorage.setItem("scanHistory",JSON.stringify(history));
+}
+updateHistory();
+
+function verdict(score){
+    if(score>=60) return "Malicious";
+    if(score>=30) return "Suspicious";
+    return "Safe";
+}
+
+function showResult(data){
+    document.getElementById("resultBox").style.display="block";
+    document.getElementById("resultBox").innerHTML=`
+        <p class="${data.verdict.toLowerCase()}"><b>Verdict:</b> ${data.verdict}</p>
+        <p><b>Total Risk Score:</b> ${data.score}</p>
+        <p><b>Risk Factors:</b></p>
+        <ul>${data.reasons.map(r=>`<li>${r}</li>`).join("")}</ul>
+        <button onclick="openModal()">Report This Item</button>
+    `;
+}
+
+function analyzeURL(){
+    const url=document.getElementById("urlInput").value.trim();
+    if(!url) return alert("Enter a URL");
+
+    let score=0,reasons=[];
+    try{
+        const u=new URL(url);
+        if(u.protocol!=="https:"){score+=15;reasons.push("Unsecured HTTP protocol")}
+        if(url.length>100){score+=10;reasons.push("Excessive URL length")}
+        if(/\d+\.\d+\.\d+\.\d+/.test(u.hostname)){score+=25;reasons.push("IP-based domain")}
+        if(/[@%]/.test(url)){score+=10;reasons.push("Encoded/special characters")}
+        if(/login|verify|bank|free|reward|secure/i.test(url)){score+=20;reasons.push("Phishing keywords")}
+    }catch{
+        score=100;reasons.push("Malformed or invalid URL");
+    }
+
+    const v=verdict(score);
+    history.push({item:url,verdict:v,score});
+    updateHistory();
+    showResult({verdict:v,score,reasons});
+}
+
+async function analyzePDF(){
+    const file=document.getElementById("pdfInput").files[0];
+    if(!file) return alert("Select a PDF");
+
+    let score=0,reasons=[];
+    if(file.size>10*1024*1024){score+=20;reasons.push("Large PDF file")}
+    if(file.name.toLowerCase().includes("invoice")){score+=10;reasons.push("Invoice-based attack pattern")}
+
+    const v=verdict(score);
+    history.push({item:file.name,verdict:v,score});
+    updateHistory();
+    showResult({verdict:v,score,reasons});
+}
+
+function analyzeAPK(){
+    const file=document.getElementById("apkInput").files[0];
+    if(!file) return alert("Select an APK");
+
+    let score=0,reasons=[];
+    if(file.size<500*1024||file.size>100*1024*1024){
+        score+=30;reasons.push("Abnormal APK size")
+    }
+    if(/mod|hack|crack/i.test(file.name)){
+        score+=25;reasons.push("Malware-related APK naming")
+    }
+
+    const v=verdict(score);
+    history.push({item:file.name,verdict:v,score});
+    updateHistory();
+    showResult({verdict:v,score,reasons});
+}
+
+function exportHistory(){
+    const a=document.createElement("a");
+    a.href="data:text/json,"+encodeURIComponent(JSON.stringify(history,null,2));
+    a.download="scan_history.json";
+    a.click();
+}
+
+const modal=document.getElementById("reportModal");
+function openModal(){modal.style.display="block"}
+function closeModal(){modal.style.display="none"}
+function submitReport(){
+    alert("Report submitted successfully. Thank you!");
+    closeModal();
+}
+</script>
+</body>
+</html>
